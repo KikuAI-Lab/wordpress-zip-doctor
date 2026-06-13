@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WordPress ZIP Doctor</title>
+    <meta name="description" content="Inspect WordPress theme and plugin ZIP files locally in your browser before uploading them.">
+    <link rel="stylesheet" href="./src/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="kicker">Browser-local WordPress package check</p>
+          <h1>WordPress ZIP Doctor</h1>
+          <p class="lead">Check theme and plugin ZIPs before you upload them. Find structural install blockers fast, without WordPress login or server access.</p>
+        </div>
+        <div class="trust-strip" aria-label="Privacy and scope">
+          <span>Files stay local</span>
+          <span>No PHP execution</span>
+          <span>ZIP installability only</span>
+        </div>
+      </section>
+
+      <section class="tool-grid">
+        <div class="panel input-panel">
+          <div class="mode-row" aria-label="Upload target">
+            <label>
+              <input type="radio" name="targetMode" value="not_sure" checked>
+              Not sure
+            </label>
+            <label>
+              <input type="radio" name="targetMode" value="theme">
+              Theme
+            </label>
+            <label>
+              <input type="radio" name="targetMode" value="plugin">
+              Plugin
+            </label>
+          </div>
+
+          <button id="dropZone" class="drop-zone" type="button">
+            <span class="drop-icon">ZIP</span>
+            <span class="drop-title">Drop a WordPress ZIP here</span>
+            <span class="drop-copy">or click to choose a file</span>
+            <span id="fileLabel" class="file-label">No file selected</span>
+          </button>
+          <input id="fileInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
+
+          <div class="action-row">
+            <button id="sampleTheme" class="button secondary" type="button">Try theme sample</button>
+            <button id="samplePlugin" class="button secondary" type="button">Try plugin sample</button>
+            <button id="scanButton" class="button primary" type="button" disabled>Inspect ZIP</button>
+          </div>
+        </div>
+
+        <div id="resultPanel" class="panel result-panel" aria-live="polite">
+          <p class="empty">Drop a ZIP to see whether WordPress can install it as a theme or plugin.</p>
+        </div>
+      </section>
+
+      <section class="scope">
+        <div>
+          <h2>Exact checks, not broad support</h2>
+          <p>This tool only verifies package structure. It will not debug hosting, licenses, cache, PHP runtime, demo imports, or WordPress.com plan limits.</p>
+        </div>
+        <a href="https://kikuai.dev/tools/wordpress-zip-doctor/" rel="noopener noreferrer">Hosted KikuAI version</a>
+      </section>
+    </main>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

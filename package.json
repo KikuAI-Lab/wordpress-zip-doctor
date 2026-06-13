@@ -1,0 +1,19 @@
+{
+  "name": "wordpress-zip-doctor",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Browser-local WordPress theme and plugin ZIP inspector.",
+  "scripts": {
+    "test": "node --test test/wordpress-zip-doctor.test.mjs",
+    "smoke": "node scripts/smoke-static.mjs"
+  },
+  "keywords": [
+    "wordpress",
+    "zip",
+    "theme",
+    "plugin",
+    "browser-local"
+  ],
+  "license": "MIT"
+}
