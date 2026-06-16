@@ -15,6 +15,87 @@ const ZIP_SIGNATURES = {
   endOfCentralDirectory: 0x06054b50,
 }
 
+const THEME_HEADER_NAMES = [
+  'Theme Name',
+  'Theme URI',
+  'Description',
+  'Author',
+  'Version',
+  'Template',
+  'License',
+  'License URI',
+  'Text Domain',
+  'Domain Path',
+  'Requires at least',
+  'Requires PHP',
+  'Update URI',
+]
+
+const PLUGIN_HEADER_NAMES = [
+  'Plugin Name',
+  'Plugin URI',
+  'Version',
+  'Description',
+  'Author',
+  'Text Domain',
+  'Domain Path',
+  'Network',
+  'Requires at least',
+  'Requires PHP',
+  'Update URI',
+  'Requires Plugins',
+]
+
+const UPLOAD_AS_IS_CODES = new Set(['installable_theme', 'installable_plugin'])
+
+const QUALITY_HINT_COPY = {
+  source_package_markers: {
+    severity: 'warning',
+    title: 'Source archive markers are present',
+    detail: 'The ZIP includes development or repository files that usually belong in a source archive, not a clean WordPress release package.',
+  },
+  dev_dependency_directory: {
+    severity: 'warning',
+    title: 'Development dependency directory found',
+    detail: 'The package contains dependency folders such as node_modules. WordPress may still install the ZIP, but this is usually not the upload-ready distribution file.',
+  },
+  vcs_metadata_directory: {
+    severity: 'warning',
+    title: 'Repository metadata found',
+    detail: 'Version-control or CI metadata is present. That is a strong signal that the ZIP may be a repository snapshot.',
+  },
+  nested_zip_inside_package: {
+    severity: 'info',
+    title: 'Nested ZIP file found',
+    detail: 'A ZIP inside a WordPress package is not automatically wrong, but marketplace bundles often put the real installable file one level deeper.',
+  },
+  missing_theme_license: {
+    severity: 'info',
+    title: 'Theme License header is missing',
+    detail: 'This does not block WordPress installation, but theme review tools commonly expect a License header in style.css.',
+  },
+  missing_theme_text_domain: {
+    severity: 'info',
+    title: 'Theme Text Domain header is missing',
+    detail: 'This does not block installation, but it can matter for translation and theme quality review.',
+  },
+  missing_theme_requires_php: {
+    severity: 'info',
+    title: 'Theme Requires PHP header is missing',
+    detail: 'This does not block installation, but it removes a useful compatibility signal before upload.',
+  },
+  plugin_requires_plugins_declared: {
+    severity: 'info',
+    title: 'Plugin dependencies declared',
+    detail: 'The plugin can be installable while still requiring other plugins before it works correctly after activation.',
+  },
+  update_uri_declared: {
+    severity: 'info',
+    title: 'Custom Update URI declared',
+    detail: 'WordPress recognizes this header; it is not an install blocker, but it can affect update behavior.',
+  },
+}
+
 const RESULT_COPY = {
   invalid_zip: {
     title: 'This is not a readable ZIP file',
@@ -606,11 +687,12 @@ function parseWordPressHeaders(text, headerNames) {
   const wanted = new Map(headerNames.map((name) => [name.toLowerCase(), name]))
 
   for (const line of text.split(/\r?\n/)) {
-    const match = line.match(/^[\s/*#@-]*([A-Za-z][A-Za-z ]{1,40})\s*:\s*(.*?)\s*(?:\*\/)?$/)
+    const withoutPhpOpener = line.replace(/^\s*<\?php\s*/i, '')
+    const match = withoutPhpOpener.match(/^[\s/*#@-]*([A-Za-z][A-Za-z ]{1,40})\s*:\s*(.*?)$/)
     if (!match) continue
     const normalized = match[1].trim().toLowerCase()
     if (!wanted.has(normalized)) continue
-    headers[wanted.get(normalized)] = match[2].trim()
+    headers[wanted.get(normalized)] = cleanupHeaderValue(match[2])
   }
 
   return headers
@@ -660,13 +742,17 @@ function isAsIsCandidate(root, topEntities) {
 function hasRepositoryMarkers(files) {
   return files.some((entry) => {
     const path = entry.path.toLowerCase()
-    return path.includes('/.github/') ||
+    return path.includes('/.git/') ||
+      path.includes('/.github/') ||
+      path.includes('/node_modules/') ||
+      path.includes('/src/') ||
+      path.includes('/tests/') ||
       path.endsWith('/package.json') ||
       path === 'package.json' ||
       path.endsWith('/composer.json') ||
       path === 'composer.json' ||
-      path.includes('/tests/') ||
-      path.includes('/src/')
+      path.endsWith('/phpunit.xml') ||
+      path === 'phpunit.xml'
   })
 }
 
@@ -683,6 +769,73 @@ function countByKind(candidates, kind, predicate = () => true) {
   return candidates.filter((candidate) => candidate.kind === kind && predicate(candidate)).length
 }
 
+function cleanupHeaderValue(value) {
+  let cleaned = String(value || '').trim()
+  while (/\s*(?:\*\/|\?>)\s*$/i.test(cleaned)) {
+    cleaned = cleaned.replace(/\s*(?:\*\/|\?>)\s*$/i, '').trim()
+  }
+  return cleaned
+}
+
+function addQualityHint(hints, seen, code) {
+  if (!code || seen.has(code)) return
+  const copy = QUALITY_HINT_COPY[code]
+  if (!copy) return
+  seen.add(code)
+  hints.push({
+    code,
+    severity: copy.severity,
+    title: copy.title,
+    detail: copy.detail,
+  })
+}
+
+function pathHasSegment(path, segment) {
+  return path.split('/').some((part) => part.toLowerCase() === segment)
+}
+
+function buildQualityHints(entries, candidates) {
+  const hints = []
+  const seen = new Set()
+  const files = entries.filter((entry) => !entry.isDirectory)
+
+  if (files.some((entry) => pathHasSegment(entry.path, '.git') || pathHasSegment(entry.path, '.github'))) {
+    addQualityHint(hints, seen, 'vcs_metadata_directory')
+  }
+
+  if (files.some((entry) => pathHasSegment(entry.path, 'node_modules'))) {
+    addQualityHint(hints, seen, 'dev_dependency_directory')
+  }
+
+  if (hasRepositoryMarkers(files)) {
+    addQualityHint(hints, seen, 'source_package_markers')
+  }
+
+  if (files.some((entry) => /\.zip$/i.test(entry.path))) {
+    addQualityHint(hints, seen, 'nested_zip_inside_package')
+  }
+
+  for (const candidate of candidates.filter((item) => item.installable && item.source !== 'nested')) {
+    const headers = candidate.headers || {}
+
+    if (candidate.kind === 'theme') {
+      if (!headers.License) addQualityHint(hints, seen, 'missing_theme_license')
+      if (!headers['Text Domain']) addQualityHint(hints, seen, 'missing_theme_text_domain')
+      if (!headers['Requires PHP']) addQualityHint(hints, seen, 'missing_theme_requires_php')
+    }
+
+    if (headers['Requires Plugins']) {
+      addQualityHint(hints, seen, 'plugin_requires_plugins_declared')
+    }
+
+    if (headers['Update URI']) {
+      addQualityHint(hints, seen, 'update_uri_declared')
+    }
+  }
+
+  return hints
+}
+
 async function inspectThemeRoot(zip, files, root, options) {
   const styleEntry = files.find((entry) => relativePathForRoot(entry.path, root) === 'style.css')
   if (!styleEntry) {
@@ -690,7 +843,7 @@ async function inspectThemeRoot(zip, files, root, options) {
   }
 
   const headerRead = await readEntryHeaderText(zip, styleEntry, options)
-  const headers = parseWordPressHeaders(headerRead.text, ['Theme Name', 'Template'])
+  const headers = parseWordPressHeaders(headerRead.text, THEME_HEADER_NAMES)
   const hasThemeName = Boolean(headers['Theme Name'])
   const isChildTheme = Boolean(headers.Template)
   const hasRequiredTemplate = files.some((entry) => {
@@ -704,6 +857,7 @@ async function inspectThemeRoot(zip, files, root, options) {
       root,
       installable: false,
       code: 'style_css_missing_theme_name',
+      headers,
       warnings: [headerRead.warning].filter(Boolean),
     }
   }
@@ -715,6 +869,7 @@ async function inspectThemeRoot(zip, files, root, options) {
       installable: false,
       code: 'theme_missing_required_template',
       name: headers['Theme Name'],
+      headers,
       warnings: [headerRead.warning].filter(Boolean),
     }
   }
@@ -725,6 +880,7 @@ async function inspectThemeRoot(zip, files, root, options) {
     installable: true,
     code: 'installable_theme',
     name: headers['Theme Name'],
+    headers,
     isChildTheme,
     warnings: [headerRead.warning].filter(Boolean),
   }
@@ -738,7 +894,7 @@ async function inspectPluginRoot(zip, files, root, options) {
 
   for (const entry of rootPhpEntries) {
     const headerRead = await readEntryHeaderText(zip, entry, options)
-    const headers = parseWordPressHeaders(headerRead.text, ['Plugin Name'])
+    const headers = parseWordPressHeaders(headerRead.text, PLUGIN_HEADER_NAMES)
     if (headers['Plugin Name']) {
       return {
         kind: 'plugin',
@@ -746,6 +902,7 @@ async function inspectPluginRoot(zip, files, root, options) {
         installable: true,
         code: 'installable_plugin',
         name: headers['Plugin Name'],
+        headers,
         warnings: [headerRead.warning].filter(Boolean),
       }
     }
@@ -758,7 +915,7 @@ async function inspectPluginRoot(zip, files, root, options) {
 
   for (const entry of nestedPhpEntries) {
     const headerRead = await readEntryHeaderText(zip, entry, options)
-    const headers = parseWordPressHeaders(headerRead.text, ['Plugin Name'])
+    const headers = parseWordPressHeaders(headerRead.text, PLUGIN_HEADER_NAMES)
     if (headers['Plugin Name']) {
       return {
         kind: 'plugin',
@@ -766,6 +923,7 @@ async function inspectPluginRoot(zip, files, root, options) {
         installable: false,
         code: 'deep_php_only_non_installable',
         name: headers['Plugin Name'],
+        headers,
         warnings: [headerRead.warning].filter(Boolean),
       }
     }
@@ -782,6 +940,10 @@ function makeResult(code, context = {}) {
   const copy = RESULT_COPY[code] || RESULT_COPY.diagnostic_only_unknown
   const metrics = context.metrics || {}
   const warnings = [...new Set([...(context.warnings || [])])]
+  const qualityHints = context.qualityHints || []
+  const blockingIssues = UPLOAD_AS_IS_CODES.has(code)
+    ? []
+    : [{ code, title: copy.title, summary: copy.summary }]
   const exportInfo = context.export || { eligible: false, mode: 'none', fileName: null, bytes: null }
   const decision = buildPreviewDecision(code, exportInfo)
 
@@ -806,6 +968,12 @@ function makeResult(code, context = {}) {
     decision,
     export: exportInfo,
     candidates: context.candidates || [],
+    blockingIssues,
+    qualityHints,
+    issueGroups: {
+      blocking: blockingIssues,
+      quality: qualityHints,
+    },
     warnings,
     metrics: {
       entryCount: metrics.entryCount || 0,
@@ -815,6 +983,7 @@ function makeResult(code, context = {}) {
       installableCandidateCount: metrics.installableCandidateCount || 0,
       directThemeCount: metrics.directThemeCount || 0,
       directPluginCount: metrics.directPluginCount || 0,
+      qualityHintCount: qualityHints.length,
     },
     evidence: context.evidence || [],
   }
@@ -959,6 +1128,7 @@ async function scanArchive(input, options = {}) {
   const matchingWrapped = matchingDirect.filter((candidate) => !candidate.asIs)
   const matchingNested = nestedScan.nestedCandidates.filter((candidate) => candidateMatchesTarget(candidate, targetMode))
   const allCandidates = [...candidates, ...nestedScan.nestedCandidates]
+  const qualityHints = buildQualityHints(zip.entries, allCandidates)
   const metrics = {
     entryCount: zip.entries.length,
     fileCount: files.length,
@@ -971,6 +1141,7 @@ async function scanArchive(input, options = {}) {
   const baseContext = {
     targetMode,
     candidates: publicCandidates(allCandidates),
+    qualityHints,
     warnings,
     metrics,
   }
@@ -1071,7 +1242,7 @@ async function scanArchive(input, options = {}) {
     return makeResult('template_kit_or_non_theme_package', baseContext)
   }
 
-  if (hasRepositoryMarkers(files)) {
+  if (hasRepositoryMarkers(zip.entries)) {
     return makeResult('github_or_source_archive_diagnostic', baseContext)
   }
 
@@ -1131,6 +1302,16 @@ export function buildMarkdownReport(result) {
     `- Found: ${result.foundSummary}`,
     `- User action: ${result.userAction}`,
     '',
+    '## Blocking issues',
+    ...(result.blockingIssues.length
+      ? result.blockingIssues.map((issue) => `- ${issue.code}: ${issue.summary}`)
+      : ['- None. The primary package shape is installable as-is.']),
+    '',
+    '## Quality hints',
+    ...(result.qualityHints.length
+      ? result.qualityHints.map((hint) => `- ${hint.code} (${hint.severity}): ${hint.detail}`)
+      : ['- None.']),
+    '',
     '## Next steps',
     ...result.nextSteps.map((step) => `- ${step}`),
     '',
@@ -1140,6 +1321,7 @@ export function buildMarkdownReport(result) {
     `- Nested ZIP files: ${result.metrics.nestedZipCount}`,
     `- Candidates: ${result.metrics.candidateCount}`,
     `- Installable candidates: ${result.metrics.installableCandidateCount}`,
+    `- Quality hints: ${result.metrics.qualityHintCount}`,
     '',
     '## Export',
     `- Eligible: ${result.export.eligible ? 'yes' : 'no'}`,
@@ -1166,6 +1348,7 @@ export function buildWordPressZipDoctorMetrics(result) {
     nestedZipCount: result.metrics.nestedZipCount,
     candidateCount: result.metrics.candidateCount,
     installableCandidateCount: result.metrics.installableCandidateCount,
+    qualityHintCount: result.metrics.qualityHintCount,
   }
 }
 

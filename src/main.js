@@ -76,6 +76,22 @@ function artifactLabel(result) {
   return 'Diagnostic report'
 }
 
+function renderIssueList(title, items, emptyText, className) {
+  return `
+    <section class="issue-section ${className}">
+      <h3>${escapeHtml(title)}</h3>
+      ${items.length
+        ? `<ul>${items.map((item) => `
+          <li>
+            <strong>${escapeHtml(item.title || item.code)}</strong>
+            <span>${escapeHtml(item.summary || item.detail)}</span>
+          </li>
+        `).join('')}</ul>`
+        : `<p>${escapeHtml(emptyText)}</p>`}
+    </section>
+  `
+}
+
 function renderResult(result) {
   const exportButton = result.export.eligible
     ? `<button id="downloadZip" class="button primary" type="button">Download installable ZIP</button>`
@@ -90,6 +106,7 @@ function renderResult(result) {
     ['Files inspected', result.metrics.fileCount],
     ['Candidates', result.metrics.candidateCount],
     ['Nested ZIPs', result.metrics.nestedZipCount],
+    ['Quality hints', result.metrics.qualityHintCount],
     ['Result code', result.primaryCode],
   ]
 
@@ -114,6 +131,10 @@ function renderResult(result) {
     <ol class="next-steps">
       ${result.nextSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
     </ol>
+    <div class="issue-grid">
+      ${renderIssueList('Blocking issues', result.blockingIssues, 'None. The primary package shape is installable as-is.', 'blocking')}
+      ${renderIssueList('Quality hints', result.qualityHints, 'None.', 'quality')}
+    </div>
     <div class="export-row">
       ${exportButton}
       <button id="downloadReport" class="button secondary" type="button">Download report</button>

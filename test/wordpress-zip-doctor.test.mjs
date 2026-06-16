@@ -200,6 +200,67 @@ test('does not treat deeply nested plugin headers as installable', async () => {
   assert.equal(result.export.eligible, false)
 })
 
+test('matches WordPress plugin header parsing at the package root', async () => {
+  const zip = createStoredZip({
+    'same-line-plugin/bootstrap.php': '<?php /* Plugin Name: Same Line Plugin */',
+    'same-line-plugin/readme.txt': 'Header is intentionally on the PHP opener line.',
+  })
+  const result = await analyzeWordPressZip(zip, { targetMode: 'plugin' })
+  assert.equal(result.primaryCode, 'installable_plugin')
+  assert.equal(result.detectedKind, 'plugin')
+  assert.equal(result.blockingIssues.length, 0)
+})
+
+test('keeps quality hints separate from blocking installability', async () => {
+  const zip = createStoredZip({
+    'sourcey-plugin/sourcey-plugin.php': `<?php
+/**
+ * Plugin Name: Sourcey Plugin
+ */
+`,
+    'sourcey-plugin/package.json': '{}',
+    'sourcey-plugin/.github/workflows/ci.yml': 'name: ci',
+    'sourcey-plugin/node_modules/library/index.js': 'export default true',
+    'sourcey-plugin/src/editor.js': 'console.log("dev source")',
+    'sourcey-plugin/tests/sourcey.test.php': '<?php',
+  })
+  const result = await analyzeWordPressZip(zip, { targetMode: 'plugin' })
+  assert.equal(result.primaryCode, 'installable_plugin')
+  assert.equal(result.verdictKind, 'upload_this_zip')
+  assert.equal(result.export.eligible, false)
+  assert.deepEqual(result.blockingIssues, [])
+  assert.equal(result.qualityHints.some((hint) => hint.code === 'source_package_markers'), true)
+  assert.equal(result.qualityHints.some((hint) => hint.code === 'dev_dependency_directory'), true)
+  assert.equal(result.metrics.qualityHintCount, result.qualityHints.length)
+})
+
+test('reports theme metadata gaps as non-blocking quality hints', async () => {
+  const zip = createStoredZip({
+    'minimal-theme/style.css': `/*
+Theme Name: Minimal Theme
+*/`,
+    'minimal-theme/templates/index.html': '<!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->',
+  })
+  const result = await analyzeWordPressZip(zip, { targetMode: 'theme' })
+  assert.equal(result.primaryCode, 'installable_theme')
+  assert.equal(result.blockingIssues.length, 0)
+  assert.equal(result.qualityHints.some((hint) => hint.code === 'missing_theme_license'), true)
+  assert.equal(result.qualityHints.some((hint) => hint.code === 'missing_theme_text_domain'), true)
+  assert.equal(result.qualityHints.some((hint) => hint.code === 'missing_theme_requires_php'), true)
+})
+
+test('uses ignored dev directories as source archive diagnosis signals', async () => {
+  const source = await analyzeWordPressZip(createStoredZip({
+    'repo-main/.git/config': '[core]',
+    'repo-main/node_modules/library/index.js': 'module.exports = true',
+    'repo-main/readme.md': 'No installable WordPress package here.',
+  }))
+  assert.equal(source.primaryCode, 'github_or_source_archive_diagnostic')
+  assert.equal(source.blockingIssues.length, 1)
+  assert.equal(source.qualityHints.some((hint) => hint.code === 'vcs_metadata_directory'), true)
+  assert.equal(source.qualityHints.some((hint) => hint.code === 'dev_dependency_directory'), true)
+})
+
 test('finds a single nested installable ZIP and returns it unchanged', async () => {
   const nested = createSampleWordPressZip('theme')
   const outer = createStoredZip({
@@ -271,10 +332,20 @@ test('rejects invalid and unsafe ZIPs', async () => {
 })
 
 test('builds a privacy-safe markdown report', async () => {
-  const result = await analyzeWordPressZip(createSampleWordPressZip('plugin'), { targetMode: 'plugin' })
+  const result = await analyzeWordPressZip(createStoredZip({
+    'sample-plugin/sample-plugin.php': `<?php
+/**
+ * Plugin Name: Sample Plugin
+ */
+`,
+    'sample-plugin/package.json': '{}',
+  }), { targetMode: 'plugin' })
   const report = buildMarkdownReport(result)
   assert.match(report, /WordPress ZIP Doctor report/)
   assert.match(report, /installable_plugin/)
   assert.match(report, /Preview decision/)
+  assert.match(report, /Blocking issues/)
+  assert.match(report, /Quality hints/)
+  assert.match(report, /source_package_markers/)
   assert.doesNotMatch(report, /Sample Plugin/)
 })
