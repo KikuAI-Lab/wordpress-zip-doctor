@@ -132,6 +132,284 @@ const RESULT_COPY = {
   },
 }
 
+const INTENT_OFFERS = {
+  cleanZip: [
+    { offer: 'clean_zip', label: 'I would pay for this clean ZIP' },
+    { offer: 'batch_zip_checks', label: 'I need this for client ZIPs' },
+  ],
+  report: [
+    { offer: 'developer_report', label: 'I would pay for this report' },
+    { offer: 'fixed_zip_needed', label: 'I need the clean ZIP if possible' },
+  ],
+  savedStep: [
+    { offer: 'saved_debugging_step', label: 'This saved an upload/debugging step' },
+    { offer: 'client_report', label: 'I need a client-sendable report' },
+  ],
+}
+
+const PREVIEW_DECISIONS = {
+  invalid_zip: {
+    verdictKind: 'blocked',
+    userAction: 'Use a normal .zip file from the vendor, marketplace, or release page.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'invalid_zip',
+    metricOutcome: 'blocked_invalid_zip',
+    wordpressExpected: 'A readable ZIP archive that WordPress can unpack.',
+    foundSummary: 'The selected file could not be parsed as a regular ZIP archive.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  encrypted_or_unsupported: {
+    verdictKind: 'blocked',
+    userAction: 'Export an unencrypted stored or deflated ZIP, then inspect it again.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'unsupported_zip_entry',
+    metricOutcome: 'blocked_unsupported_zip',
+    wordpressExpected: 'A normal unencrypted ZIP archive.',
+    foundSummary: 'One or more entries use encryption, ZIP64, or a compression method this browser-local scanner will not inspect.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  too_large_or_unsafe_to_scan: {
+    verdictKind: 'blocked',
+    userAction: 'Use the smaller installable WordPress package instead of a full vendor/source bundle.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'scan_limit',
+    metricOutcome: 'blocked_scan_limit',
+    wordpressExpected: 'A package small enough to inspect safely in the browser.',
+    foundSummary: 'The ZIP crossed browser-local size or entry-count limits.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  zip_bomb_risk: {
+    verdictKind: 'blocked',
+    userAction: 'Do not upload this ZIP until you verify the source and package contents.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'zip_bomb_risk',
+    metricOutcome: 'blocked_unsafe_zip',
+    wordpressExpected: 'A ZIP with reasonable extracted size and compression ratio.',
+    foundSummary: 'The declared extracted size or compression ratio is unsafe for browser-local inspection.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  installable_theme: {
+    verdictKind: 'upload_this_zip',
+    userAction: 'Upload this same ZIP under Appearance -> Themes -> Add New -> Upload Theme.',
+    artifactKind: 'none_needed',
+    artifactEligible: false,
+    blockingReason: 'none',
+    metricOutcome: 'installable_as_is',
+    wordpressExpected: 'A theme package with style.css, Theme Name, and a theme entry point at the package root.',
+    foundSummary: 'This archive already matches the WordPress theme package shape.',
+    intentOffers: INTENT_OFFERS.savedStep,
+  },
+  installable_plugin: {
+    verdictKind: 'upload_this_zip',
+    userAction: 'Upload this same ZIP under Plugins -> Add New -> Upload Plugin.',
+    artifactKind: 'none_needed',
+    artifactEligible: false,
+    blockingReason: 'none',
+    metricOutcome: 'installable_as_is',
+    wordpressExpected: 'A plugin package with a root-level PHP file containing a Plugin Name header.',
+    foundSummary: 'This archive already matches the WordPress plugin package shape.',
+    intentOffers: INTENT_OFFERS.savedStep,
+  },
+  nested_installable_zip_found: {
+    verdictKind: 'download_clean_zip',
+    userAction: 'Download the nested installable ZIP from this tool and upload that file to WordPress.',
+    artifactKind: 'installable_zip',
+    artifactEligible: true,
+    blockingReason: 'outer_bundle',
+    metricOutcome: 'clean_zip_available',
+    wordpressExpected: 'The exact theme or plugin ZIP, not the outer marketplace/vendor bundle.',
+    foundSummary: 'A single installable WordPress ZIP was found inside the selected bundle.',
+    intentOffers: INTENT_OFFERS.cleanZip,
+  },
+  wrong_outer_bundle: {
+    verdictKind: 'download_clean_zip',
+    userAction: 'Download the repacked installable ZIP from this tool, or zip only the WordPress package folder.',
+    artifactKind: 'installable_zip',
+    artifactEligible: true,
+    blockingReason: 'wrapped_package',
+    metricOutcome: 'clean_zip_available',
+    wordpressExpected: 'Only the theme or plugin package folder at the ZIP root.',
+    foundSummary: 'A valid WordPress package folder exists, but the uploaded archive also contains extra top-level files.',
+    intentOffers: INTENT_OFFERS.cleanZip,
+  },
+  multiple_installable_candidates: {
+    verdictKind: 'manual_choice_required',
+    userAction: 'Open the bundle and choose the exact theme or plugin package manually before uploading.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'multiple_candidates',
+    metricOutcome: 'manual_choice_required',
+    wordpressExpected: 'One installable theme or plugin package per upload.',
+    foundSummary: 'More than one possible WordPress package was found, so automatic export would be unsafe.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  theme_uploaded_as_plugin: {
+    verdictKind: 'wrong_upload_target',
+    userAction: 'Upload this ZIP under Appearance -> Themes -> Add New -> Upload Theme, not under Plugins.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'theme_uploaded_as_plugin',
+    metricOutcome: 'wrong_target',
+    wordpressExpected: 'The plugin uploader expects a root-level PHP file with a Plugin Name header.',
+    foundSummary: 'The archive has theme markers instead.',
+    intentOffers: INTENT_OFFERS.savedStep,
+  },
+  plugin_uploaded_as_theme: {
+    verdictKind: 'wrong_upload_target',
+    userAction: 'Upload this ZIP under Plugins -> Add New -> Upload Plugin, not under Themes.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'plugin_uploaded_as_theme',
+    metricOutcome: 'wrong_target',
+    wordpressExpected: 'The theme uploader expects style.css with a Theme Name header and a theme entry point.',
+    foundSummary: 'The archive has plugin markers instead.',
+    intentOffers: INTENT_OFFERS.savedStep,
+  },
+  missing_style_css: {
+    verdictKind: 'diagnostic_only',
+    userAction: 'Look for an "installable WordPress file only" ZIP or zip the actual theme folder.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'missing_style_css',
+    metricOutcome: 'diagnostic_only',
+    wordpressExpected: 'A theme package with style.css at the package root.',
+    foundSummary: 'No root-level style.css was found for the selected theme upload.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  style_css_missing_theme_name: {
+    verdictKind: 'diagnostic_only',
+    userAction: 'Use the real theme package from the vendor, or add a Theme Name header if you own this theme.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'style_css_missing_theme_name',
+    metricOutcome: 'diagnostic_only',
+    wordpressExpected: 'style.css must include a Theme Name header in its first comment block.',
+    foundSummary: 'style.css exists, but WordPress would not recognize it as theme metadata.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  theme_missing_required_template: {
+    verdictKind: 'diagnostic_only',
+    userAction: 'Use the complete theme package, not a partial source or documentation ZIP.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'theme_entry_point_missing',
+    metricOutcome: 'diagnostic_only',
+    wordpressExpected: 'A parent theme needs index.php, templates/index.html, or block-templates/index.html. A child theme needs Template.',
+    foundSummary: 'Theme metadata exists, but the required theme entry point is missing.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  no_valid_plugin_header: {
+    verdictKind: 'diagnostic_only',
+    userAction: 'Zip the plugin folder that contains the main PHP file, or use a release asset built for WordPress.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'no_plugin_header',
+    metricOutcome: 'diagnostic_only',
+    wordpressExpected: 'A root-level PHP file with a Plugin Name header.',
+    foundSummary: 'No valid root-level WordPress plugin header was found.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  deep_php_only_non_installable: {
+    verdictKind: 'diagnostic_only',
+    userAction: 'Repackage the folder that directly contains the main plugin PHP file.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'plugin_header_too_deep',
+    metricOutcome: 'diagnostic_only',
+    wordpressExpected: 'WordPress checks PHP files directly inside the extracted plugin package root.',
+    foundSummary: 'A Plugin Name header exists, but it is buried too deep for the WordPress uploader.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  github_or_source_archive_diagnostic: {
+    verdictKind: 'diagnostic_only',
+    userAction: 'Use the project release ZIP or build the WordPress package before uploading.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'source_archive',
+    metricOutcome: 'diagnostic_only',
+    wordpressExpected: 'A built WordPress theme or plugin package, not a repository source snapshot.',
+    foundSummary: 'Repository/source markers were found instead of an installable WordPress package root.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  template_kit_or_non_theme_package: {
+    verdictKind: 'diagnostic_only',
+    userAction: 'Use the vendor template-kit importer or check the package instructions.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'template_kit_or_non_theme',
+    metricOutcome: 'diagnostic_only',
+    wordpressExpected: 'Theme/plugin uploaders expect installable theme/plugin packages, not template-kit imports.',
+    foundSummary: 'Template-kit or non-theme package markers were found.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+  diagnostic_only_unknown: {
+    verdictKind: 'diagnostic_only',
+    userAction: 'Check whether you downloaded a documentation bundle, source archive, or platform-specific package.',
+    artifactKind: 'diagnostic_report',
+    artifactEligible: true,
+    blockingReason: 'unknown_package_shape',
+    metricOutcome: 'diagnostic_only',
+    wordpressExpected: 'A package with either theme markers or plugin markers at the expected root.',
+    foundSummary: 'No installable WordPress theme or plugin structure was found.',
+    intentOffers: INTENT_OFFERS.report,
+  },
+}
+
+const WORDPRESS_ZIP_DOCTOR_DEMOS = [
+  {
+    id: 'missing-style-css',
+    label: 'Missing style.css',
+    shortLabel: 'Missing style.css',
+    targetMode: 'theme',
+    resultCode: 'missing_style_css',
+    copy: 'Theme upload fails because the package has no root style.css.',
+  },
+  {
+    id: 'no-valid-plugin',
+    label: 'No valid plugins found',
+    shortLabel: 'No valid plugin',
+    targetMode: 'plugin',
+    resultCode: 'no_valid_plugin_header',
+    copy: 'Plugin upload fails because no root PHP Plugin Name header exists.',
+  },
+  {
+    id: 'nested-theme-bundle',
+    label: 'Vendor bundle with nested ZIP',
+    shortLabel: 'Nested ZIP',
+    targetMode: 'theme',
+    resultCode: 'nested_installable_zip_found',
+    copy: 'The installable WordPress ZIP is inside an outer marketplace bundle.',
+  },
+  {
+    id: 'source-archive',
+    label: 'GitHub/source archive',
+    shortLabel: 'Source archive',
+    targetMode: 'not_sure',
+    resultCode: 'github_or_source_archive_diagnostic',
+    copy: 'Repository ZIPs often need a release build before WordPress can install them.',
+  },
+  {
+    id: 'wrong-target-plugin-as-theme',
+    label: 'Plugin uploaded as theme',
+    shortLabel: 'Wrong target',
+    targetMode: 'theme',
+    resultCode: 'plugin_uploaded_as_theme',
+    copy: 'A plugin ZIP sent to the theme uploader produces the wrong failure path.',
+  },
+  {
+    id: 'installable-theme',
+    label: 'Installable theme',
+    shortLabel: 'Valid theme',
+    targetMode: 'theme',
+    resultCode: 'installable_theme',
+    copy: 'A clean theme package that WordPress should accept as-is.',
+  },
+]
+
 const textDecoder = new TextDecoder('utf-8', { fatal: false })
 const textEncoder = new TextEncoder()
 
@@ -504,6 +782,8 @@ function makeResult(code, context = {}) {
   const copy = RESULT_COPY[code] || RESULT_COPY.diagnostic_only_unknown
   const metrics = context.metrics || {}
   const warnings = [...new Set([...(context.warnings || [])])]
+  const exportInfo = context.export || { eligible: false, mode: 'none', fileName: null, bytes: null }
+  const decision = buildPreviewDecision(code, exportInfo)
 
   return {
     ok: !['invalid_zip', 'encrypted_or_unsupported', 'too_large_or_unsafe_to_scan', 'zip_bomb_risk'].includes(code),
@@ -514,7 +794,17 @@ function makeResult(code, context = {}) {
     confidence: context.confidence || copy.confidence,
     targetMode: context.targetMode || 'not_sure',
     detectedKind: context.detectedKind || null,
-    export: context.export || { eligible: false, mode: 'none', fileName: null, bytes: null },
+    verdictKind: decision.verdictKind,
+    userAction: decision.userAction,
+    artifactKind: decision.artifactKind,
+    artifactEligible: decision.artifactEligible,
+    blockingReason: decision.blockingReason,
+    safeToExport: decision.safeToExport,
+    metricOutcome: decision.metricOutcome,
+    wordpressExpected: decision.wordpressExpected,
+    foundSummary: decision.foundSummary,
+    decision,
+    export: exportInfo,
     candidates: context.candidates || [],
     warnings,
     metrics: {
@@ -527,6 +817,25 @@ function makeResult(code, context = {}) {
       directPluginCount: metrics.directPluginCount || 0,
     },
     evidence: context.evidence || [],
+  }
+}
+
+function buildPreviewDecision(code, exportInfo) {
+  const template = PREVIEW_DECISIONS[code] || PREVIEW_DECISIONS.diagnostic_only_unknown
+  const safeToExport = Boolean(exportInfo?.eligible)
+  const artifactKind = safeToExport ? 'installable_zip' : template.artifactKind
+
+  return {
+    verdictKind: template.verdictKind,
+    userAction: template.userAction,
+    artifactKind,
+    artifactEligible: safeToExport || Boolean(template.artifactEligible),
+    blockingReason: template.blockingReason,
+    safeToExport,
+    metricOutcome: template.metricOutcome,
+    wordpressExpected: template.wordpressExpected,
+    foundSummary: template.foundSummary,
+    intentOffers: template.intentOffers,
   }
 }
 
@@ -810,9 +1119,17 @@ export function buildMarkdownReport(result) {
     `Confidence: ${result.confidence}`,
     `Selected target: ${result.targetMode}`,
     `Detected type: ${result.detectedKind || 'unknown'}`,
+    `Verdict kind: ${result.verdictKind}`,
+    `Artifact: ${result.artifactKind}`,
+    `Metric outcome: ${result.metricOutcome}`,
     '',
     '## Summary',
     result.summary,
+    '',
+    '## Preview decision',
+    `- WordPress expected: ${result.wordpressExpected}`,
+    `- Found: ${result.foundSummary}`,
+    `- User action: ${result.userAction}`,
     '',
     '## Next steps',
     ...result.nextSteps.map((step) => `- ${step}`),
@@ -970,8 +1287,100 @@ export function createStoredZip(filesInput) {
   return output
 }
 
+function normalizeDemoId(value) {
+  if (value === 'theme') return 'installable-theme'
+  if (value === 'plugin') return 'installable-plugin'
+
+  const id = String(value || '').trim()
+  if (WORDPRESS_ZIP_DOCTOR_DEMOS.some((demo) => demo.id === id)) return id
+  if (id === 'installable-plugin') return id
+  return 'installable-theme'
+}
+
+function createInstallablePluginZip() {
+  return createStoredZip({
+    'sample-plugin/sample-plugin.php': `<?php
+/**
+ * Plugin Name: Sample Plugin
+ */
+`,
+    'sample-plugin/readme.txt': 'Sample plugin package.',
+  })
+}
+
+function createInstallableThemeZip() {
+  return createStoredZip({
+    'sample-theme/style.css': `/*
+Theme Name: Sample Theme
+*/
+`,
+    'sample-theme/index.php': '<?php get_header(); get_footer();',
+  })
+}
+
+export function listWordPressZipDoctorDemos() {
+  return WORDPRESS_ZIP_DOCTOR_DEMOS.map((demo) => ({ ...demo }))
+}
+
+export function createWordPressZipDoctorDemo(id = 'installable-theme') {
+  const demoId = normalizeDemoId(id)
+  const definition = WORDPRESS_ZIP_DOCTOR_DEMOS.find((demo) => demo.id === demoId) || {
+    id: 'installable-plugin',
+    label: 'Installable plugin',
+    shortLabel: 'Valid plugin',
+    targetMode: 'plugin',
+    resultCode: 'installable_plugin',
+    copy: 'A clean plugin package that WordPress should accept as-is.',
+  }
+
+  return {
+    ...definition,
+    bytes: createSampleWordPressZip(demoId),
+  }
+}
+
 export function createSampleWordPressZip(kind = 'theme') {
-  if (kind === 'plugin') {
+  const demoId = normalizeDemoId(kind)
+
+  if (demoId === 'installable-plugin') {
+    return createInstallablePluginZip()
+  }
+
+  if (demoId === 'missing-style-css') {
+    return createStoredZip({
+      'broken-theme/index.php': '<?php get_header(); get_footer();',
+      'broken-theme/readme.txt': 'This folder is missing style.css.',
+    })
+  }
+
+  if (demoId === 'no-valid-plugin') {
+    return createStoredZip({
+      'broken-plugin/readme.txt': 'This package has no root PHP plugin header.',
+      'broken-plugin/assets/admin.js': 'console.log("settings")',
+    })
+  }
+
+  if (demoId === 'nested-theme-bundle') {
+    return createStoredZip({
+      'themeforest-bundle/documentation/readme.txt': 'Vendor docs.',
+      'themeforest-bundle/licensing/license.txt': 'License note placeholder.',
+      'themeforest-bundle/installable-wordpress-theme.zip': createInstallableThemeZip(),
+    })
+  }
+
+  if (demoId === 'source-archive') {
+    return createStoredZip({
+      'example-plugin-main/package.json': '{}',
+      'example-plugin-main/src/index.js': 'console.log("source archive")',
+      'example-plugin-main/.github/workflows/build.yml': 'name: build',
+    })
+  }
+
+  if (demoId === 'wrong-target-plugin-as-theme') {
+    return createInstallablePluginZip()
+  }
+
+  if (demoId === 'plugin') {
     return createStoredZip({
       'sample-plugin/sample-plugin.php': `<?php
 /**
@@ -982,13 +1391,7 @@ export function createSampleWordPressZip(kind = 'theme') {
     })
   }
 
-  return createStoredZip({
-    'sample-theme/style.css': `/*
-Theme Name: Sample Theme
-*/
-`,
-    'sample-theme/index.php': '<?php get_header(); get_footer();',
-  })
+  return createInstallableThemeZip()
 }
 
 export function defaultWordPressZipDoctorLimits() {

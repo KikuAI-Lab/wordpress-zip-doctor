@@ -47,10 +47,15 @@
           </button>
           <input id="fileInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 
+          <section class="demo-panel" aria-label="Problem demo ZIPs">
+            <h2>Problem demos</h2>
+            <p>Preview exact WordPress upload failures before trying your own ZIP.</p>
+            <div id="demoGrid" class="demo-grid"></div>
+          </section>
+
           <div class="action-row">
-            <button id="sampleTheme" class="button secondary" type="button">Try theme sample</button>
-            <button id="samplePlugin" class="button secondary" type="button">Try plugin sample</button>
             <button id="scanButton" class="button primary" type="button" disabled>Inspect ZIP</button>
+            <div id="validDemoGrid" class="valid-demo-grid" aria-label="Known-good ZIP demos"></div>
           </div>
         </div>
 

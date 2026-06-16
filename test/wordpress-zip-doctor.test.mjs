@@ -4,8 +4,10 @@ import { test } from 'node:test'
 import {
   analyzeWordPressZip,
   buildMarkdownReport,
+  createWordPressZipDoctorDemo,
   createSampleWordPressZip,
   createStoredZip,
+  listWordPressZipDoctorDemos,
 } from '../src/wordpress-zip-doctor.js'
 
 function inflateRaw(bytes) {
@@ -102,11 +104,41 @@ test('detects installable theme and plugin ZIPs', async () => {
   assert.equal(theme.primaryCode, 'installable_theme')
   assert.equal(theme.detectedKind, 'theme')
   assert.equal(theme.export.eligible, false)
+  assert.equal(theme.verdictKind, 'upload_this_zip')
+  assert.equal(theme.artifactKind, 'none_needed')
 
   const plugin = await analyzeWordPressZip(createSampleWordPressZip('plugin'))
   assert.equal(plugin.primaryCode, 'installable_plugin')
   assert.equal(plugin.detectedKind, 'plugin')
   assert.equal(plugin.export.eligible, false)
+  assert.equal(plugin.verdictKind, 'upload_this_zip')
+})
+
+test('ships pain-path demo fixtures with preview decision contracts', async () => {
+  const expected = new Map([
+    ['missing-style-css', 'missing_style_css'],
+    ['no-valid-plugin', 'no_valid_plugin_header'],
+    ['nested-theme-bundle', 'nested_installable_zip_found'],
+    ['source-archive', 'github_or_source_archive_diagnostic'],
+    ['wrong-target-plugin-as-theme', 'plugin_uploaded_as_theme'],
+    ['installable-theme', 'installable_theme'],
+  ])
+
+  assert.deepEqual(listWordPressZipDoctorDemos().map((demo) => demo.id), [...expected.keys()])
+
+  for (const [id, primaryCode] of expected) {
+    const demo = createWordPressZipDoctorDemo(id)
+    const result = await analyzeWordPressZip(demo.bytes, { targetMode: demo.targetMode, inflateRaw })
+    assert.equal(result.primaryCode, primaryCode)
+    assert.equal(typeof result.verdictKind, 'string')
+    assert.equal(typeof result.userAction, 'string')
+    assert.equal(typeof result.artifactKind, 'string')
+    assert.equal(typeof result.blockingReason, 'string')
+    assert.equal(typeof result.metricOutcome, 'string')
+    assert.equal(typeof result.wordpressExpected, 'string')
+    assert.equal(typeof result.foundSummary, 'string')
+    assert.equal(Array.isArray(result.decision.intentOffers), true)
+  }
 })
 
 test('supports deflated ZIP entries when inflateRaw is provided', async () => {
@@ -243,5 +275,6 @@ test('builds a privacy-safe markdown report', async () => {
   const report = buildMarkdownReport(result)
   assert.match(report, /WordPress ZIP Doctor report/)
   assert.match(report, /installable_plugin/)
+  assert.match(report, /Preview decision/)
   assert.doesNotMatch(report, /Sample Plugin/)
 })

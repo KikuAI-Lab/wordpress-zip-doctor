@@ -6,6 +6,8 @@ WordPress ZIP Doctor is a browser-local inspector for WordPress theme and plugin
 - Check the archive structure against WordPress install expectations.
 - See why the file fails before you open WordPress admin.
 - Download the exact ZIP to upload when the checks pass.
+- Try built-in pain-path demos for missing `style.css`, missing plugin headers, nested vendor bundles, source archives, and wrong upload targets.
+- Use the stable preview contract: verdict, expected WordPress structure, found package shape, next action, artifact availability, and sanitized metric outcome.
 - Scope stays narrow: ZIP installability only, with no WordPress login, PHP execution, malware scan, demo import, or hosting fixes.
 
 ## Try it
