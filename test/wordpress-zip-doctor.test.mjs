@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { deflateRawSync, inflateRawSync } from 'node:zlib'
 import { test } from 'node:test'
 import {
@@ -324,11 +325,31 @@ test('rejects invalid and unsafe ZIPs', async () => {
   const invalid = await analyzeWordPressZip(new Uint8Array([1, 2, 3]))
   assert.equal(invalid.primaryCode, 'invalid_zip')
 
+  const tooLarge = await analyzeWordPressZip(createStoredZip({
+    'plugin/plugin.php': '<?php /* Plugin Name: Big */',
+  }), { limits: { maxZipBytes: 10 } })
+  assert.equal(tooLarge.primaryCode, 'too_large_or_unsafe_to_scan')
+
   const tooMany = createStoredZip(Object.fromEntries(
     Array.from({ length: 4 }, (_, index) => [`files/${index}.txt`, 'x']),
   ))
   const blocked = await analyzeWordPressZip(tooMany, { limits: { maxEntryCount: 3 } })
   assert.equal(blocked.primaryCode, 'too_large_or_unsafe_to_scan')
+
+  const unsafePath = makeDeflatedZip({
+    '../evil.php': '<?php /* Plugin Name: Unsafe */',
+  })
+  const unsafe = await analyzeWordPressZip(unsafePath, { inflateRaw })
+  assert.equal(unsafe.primaryCode, 'too_large_or_unsafe_to_scan')
+
+  const highRatio = makeDeflatedZip({
+    'plugin/big.txt': 'A'.repeat(2 * 1024 * 1024),
+  })
+  const bomb = await analyzeWordPressZip(highRatio, {
+    inflateRaw,
+    limits: { maxCompressionRatio: 10 },
+  })
+  assert.equal(bomb.primaryCode, 'zip_bomb_risk')
 })
 
 test('builds a privacy-safe markdown report', async () => {
@@ -348,4 +369,12 @@ test('builds a privacy-safe markdown report', async () => {
   assert.match(report, /Quality hints/)
   assert.match(report, /source_package_markers/)
   assert.doesNotMatch(report, /Sample Plugin/)
+})
+
+test('keeps ZIP parsing dependency-free until fixture evidence justifies a parser dependency', async () => {
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  const source = await readFile(new URL('../src/wordpress-zip-doctor.js', import.meta.url), 'utf8')
+
+  assert.deepEqual(pkg.dependencies || {}, {})
+  assert.doesNotMatch(source, /\b(JSZip|fflate|unzipit|yauzl)\b/)
 })
