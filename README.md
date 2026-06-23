@@ -1,20 +1,26 @@
 # WordPress ZIP Doctor
 
-WordPress ZIP Doctor is a browser-local inspector for WordPress theme and plugin ZIPs. It helps you catch installability problems before you upload the archive.
+WordPress ZIP Doctor is a browser-local inspector for WordPress theme and plugin ZIPs before upload.
 
-- Drop a plugin or theme ZIP in your browser.
-- Check the archive structure against WordPress install expectations.
-- See why the file fails before you open WordPress admin.
-- Download the exact ZIP to upload when the checks pass.
-- Try built-in pain-path demos for missing `style.css`, missing plugin headers, nested vendor bundles, source archives, and wrong upload targets.
-- Use the stable preview contract: verdict, expected WordPress structure, found package shape, next action, artifact availability, and sanitized metric outcome.
-- Scope stays narrow: ZIP installability only, with no WordPress login, PHP execution, malware scan, demo import, or hosting fixes.
+**[Open the hosted checker](https://kikuai.dev/tools/wordpress-zip-doctor/)**
 
-## Try it
+Hosted checker · [Run locally](#quickstart) · [Limitations](#what-it-does-not-do)
 
-Open `index.html` in a browser, or use the hosted version on KikuAI:
+## Quickstart
 
-https://kikuai.dev/tools/wordpress-zip-doctor/
+Open `index.html` directly, or serve the static files locally:
+
+```bash
+python3 -m http.server 4174
+```
+
+Then open:
+
+```text
+http://localhost:4174/
+```
+
+Expected result: the app loads a ZIP dropzone plus built-in pain-path demos for missing `style.css`, missing plugin headers, nested vendor bundles, source archives, and wrong upload targets.
 
 ## What it checks
 
@@ -23,6 +29,12 @@ https://kikuai.dev/tools/wordpress-zip-doctor/
 - Vendor bundles: one nested installable ZIP or one repackable package folder.
 - Source archives: common GitHub/source-package shapes that are not ready for WordPress upload.
 - Safety: browser-local caps for entry count, declared extracted size, nested ZIP depth, unsafe paths, encryption, and compression ratio.
+
+## What it can export
+
+- The exact ZIP to upload when the package is already installable.
+- A repackaged ZIP when there is one clear installable folder inside the archive.
+- A privacy-safe Markdown report with the verdict, expected WordPress structure, found package shape, next action, artifact availability, and sanitized metric outcome.
 
 ## What it does not do
 
@@ -39,3 +51,9 @@ https://kikuai.dev/tools/wordpress-zip-doctor/
 npm test
 npm run smoke
 ```
+
+Expected test result: 17 Node test cases pass and the static smoke check finds the browser app entry points.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
