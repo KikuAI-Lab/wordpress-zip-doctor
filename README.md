@@ -4,7 +4,14 @@ WordPress ZIP Doctor is a browser-local inspector for WordPress theme and plugin
 
 **[Open the hosted checker](https://kikuai.dev/tools/wordpress-zip-doctor/)**
 
-Hosted checker · [Run locally](#quickstart) · [Limitations](#what-it-does-not-do)
+[Docs](#what-it-checks) · [Examples](#quickstart) · [Limitations](#what-it-does-not-do)
+
+Sample output:
+
+```text
+Verdict: Repackage before upload
+Next action: upload the generated installable ZIP or review the Markdown report
+```
 
 ## Quickstart
 
