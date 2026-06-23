@@ -6,6 +6,8 @@ WordPress ZIP Doctor is a browser-local inspector for WordPress theme and plugin
 
 [Docs](#what-it-checks) · [Examples](#quickstart) · [Limitations](#what-it-does-not-do)
 
+![WordPress ZIP Doctor browser-local ZIP triage interface](docs/assets/readme-screenshot.png)
+
 Sample output:
 
 ```text
