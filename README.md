@@ -17,7 +17,8 @@ Next action: upload the generated installable ZIP or review the Markdown report
 
 ## Quickstart
 
-Open `index.html` directly, or serve the static files locally:
+Serve the static files over HTTP. The entry point uses JavaScript modules, so
+opening `index.html` through `file://` is not supported.
 
 ```bash
 python3 -m http.server 4174
